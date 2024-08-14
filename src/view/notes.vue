@@ -70,7 +70,8 @@
     UploaderFileListItem,
   } from 'vant'
   import dayjs from 'dayjs'
-  import { upfile } from '@/utils/api'
+  import { initFile, upfile } from '@/utils/api'
+  import { BotInfoModel } from '@/utils/api'
 
   const md = markdownit({
     html: true,
@@ -99,6 +100,7 @@
   const curFile = ref<File>()
   const loading = ref(false)
   const list = ref<any>([])
+  const botInfo = ref({} as BotInfoModel)
   const chatListRef = shallowRef<HTMLElement>()
 
   const getFile: UploaderAfterRead = async (file) => {
@@ -137,6 +139,8 @@
     list.value.push({
       ...aiTpl,
       id: new Date().getTime(),
+      name: botInfo.value?.name || 'AI',
+      avatar: botInfo.value?.icon_url || 'https://www.jqliu.com/ai/hr.webp',
       content: 'AI分析中...<i class="ai-loading"></i>',
       date: dayjs().format('YYYY-MM-DD HH:mm:ss'),
       status: 1,
@@ -195,7 +199,24 @@
     })
   }
 
-  onMounted(() => {
+  onMounted(async () => {
+    const res = await initFile()
+    botInfo.value = res.data.data
+
+    // 初始化开场白
+    list.value.push({
+      ...aiTpl,
+      id: new Date().getTime(),
+      name: botInfo.value?.name || 'AI',
+      avatar: botInfo.value?.icon_url || 'https://www.jqliu.com/ai/hr.webp',
+      content: botInfo.value?.onboarding_info.prologue || '欢迎使用简历诊断大师',
+      date: dayjs().format('YYYY-MM-DD HH:mm:ss'),
+      status: 1,
+      followUp: [] as string[],
+    })
+
+    document.title = botInfo.value?.name || 'AI'
+
     handleScroll()
   })
 </script>

@@ -14,7 +14,7 @@ const routes = [
     path: '/notes',
     component: () => import('@/view/notes.vue'),
     meta: {
-      title: '简历定制',
+      title: '',
     },
   },
 ]
