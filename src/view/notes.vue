@@ -29,7 +29,15 @@
           </div>
           <div class="chat-item__content">
             <div class="chat-item__content--header"> {{ item.name }} </div>
-            <div class="chat-item__md chat-item__mdmy">{{ item.content }}</div>
+            <div class="chat-item__md chat-item__mdmy">
+              <div v-if="item.type === 'file'" class="chat-item__md__file">
+                <Icon name="description" size="80" color="#fff" />
+                <div>{{ curFile?.name }}</div>
+              </div>
+              <template v-else>
+                {{ item.content }}
+              </template>
+            </div>
             <div class="chat-item__content--footer">
               <div class="chat-item__content--footer--time"> {{ item.date }} </div>
             </div>
@@ -40,26 +48,9 @@
 
     <div class="chat-input">
       <div class="chat-input__inner">
-        <Field
-          v-model="aiPromate"
-          type="textarea"
-          autosize
-          placeholder="请输入您要定制的简历内容"
-        />
-        <div class="chat-input__button" @click="submit">
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            width="16"
-            height="16"
-            fill="none"
-            viewBox="0 0 16 16"
-          >
-            <path
-              fill="currentColor"
-              d="M14.464 8.903a1.027 1.027 0 0 0 0-1.805L2.508.625A1.01 1.01 0 0 0 1.5.645c-.312.186-.5.516-.5.881L2.32 6.68l5.608.82c.321 0 .581.224.581.5 0 .277-.26.5-.581.5-3.161.464-5.03.736-5.607.816L1 14.473a1.021 1.021 0 0 0 1.508.903l11.956-6.473Z"
-            ></path>
-          </svg>
-        </div>
+        <Uploader :preview-image="false" :max-count="1" reupload accept="*" :after-read="getFile">
+          <Button icon="plus" type="primary">上传简历</Button>
+        </Uploader>
       </div>
       <p class="chat-input__tips">内容由AI生成，无法确保真实准确，仅供参考。</p>
     </div>
@@ -69,8 +60,17 @@
 <script setup lang="ts">
   import { ref, shallowRef, onMounted, nextTick } from 'vue'
   import markdownit from 'markdown-it'
-  import { Field, showToast } from 'vant'
+  import {
+    showLoadingToast,
+    closeToast,
+    Uploader,
+    Button,
+    Icon,
+    UploaderAfterRead,
+    UploaderFileListItem,
+  } from 'vant'
   import dayjs from 'dayjs'
+  import { upfile } from '@/utils/api'
 
   const md = markdownit({
     html: true,
@@ -80,9 +80,8 @@
   const aiTpl = {
     id: new Date().getTime(),
     type: 'ai',
-    name: '简历定制',
-    avatar:
-      'https://p9-arcosite.byteimg.com/tos-cn-i-goo7wpa0wc/35b8379415414e29b27118f1eac79962~tplv-goo7wpa0wc-image.image',
+    name: 'HR',
+    avatar: 'https://www.jqliu.com/ai/hr.webp',
     content: '',
     date: '',
     followUp: [],
@@ -97,39 +96,44 @@
     date: '',
   }
 
-  const aiPromate = ref('')
+  const curFile = ref<File>()
   const loading = ref(false)
   const list = ref<any>([])
   const chatListRef = shallowRef<HTMLElement>()
 
-  const submit = async () => {
-    if (loading.value) {
-      return
-    }
+  const getFile: UploaderAfterRead = async (file) => {
+    showLoadingToast({
+      duration: 0,
+      forbidClick: true,
+      message: '文件上传中...',
+    })
+    loading.value = true
+    const formData = new FormData()
+    curFile.value = (file as UploaderFileListItem).file
+    formData.append('file', curFile.value as File)
 
-    if (aiPromate.value) {
-      sendAi(aiPromate.value)
+    const res = await upfile(formData)
 
-      aiPromate.value = ''
-    } else {
-      showToast({
-        message: '请输入内容',
-      })
-    }
+    closeToast()
+    submit(res.data.path)
   }
-  const sendAi = (content: string) => {
+  const submit = async (url: string) => {
+    sendAi(url, 'file')
+  }
+  const sendAi = (content: string, type = '') => {
     list.value.push({
       ...userTpl,
       id: new Date().getTime(),
       content: content,
       date: dayjs().format('YYYY-MM-DD HH:mm:ss'),
+      type: type,
     })
 
-    handleAi(content)
+    handleAi(content, type)
 
     handleScroll()
   }
-  const handleAi = (prompt: string) => {
+  const handleAi = (prompt: string, type = '') => {
     list.value.push({
       ...aiTpl,
       id: new Date().getTime(),
@@ -141,7 +145,7 @@
     const current = list.value[list.value.length - 1]
 
     const evtSource = new EventSource(
-      import.meta.env.VITE_AI_URL + '/file?content=' + encodeURIComponent(prompt),
+      import.meta.env.VITE_AI_URL + '/file?content=' + encodeURIComponent(prompt) + '&type=' + type,
     )
 
     let content = ''
@@ -172,6 +176,14 @@
       loading.value = false
       current.status = 2
 
+      evtSource.close()
+
+      handleScroll()
+    })
+    evtSource.addEventListener('conversation.chat.failed', () => {
+      loading.value = false
+      current.status = 2
+      current.content = 'AI分析失败'
       evtSource.close()
 
       handleScroll()
@@ -244,11 +256,16 @@
       }
     }
     &__md {
+      display: inline-block;
       margin: 10px 0 0;
       padding: 10px 15px;
       background-color: #f5f6fa;
       border-radius: 8px;
       border: solid 1px #e1e4e8;
+
+      &__file {
+        text-align: center;
+      }
     }
     &__mdmy {
       background: #4d53e8;
